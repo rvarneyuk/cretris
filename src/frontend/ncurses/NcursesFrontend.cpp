@@ -3,11 +3,14 @@
 #include <ncurses.h>
 
 #include <algorithm>
+#include <array>
 #include <thread>
 
 namespace cretris::frontend {
 
 namespace {
+using Footprint = std::array<bool, core::BOARD_WIDTH>;
+
 short color_for(core::TetrominoType type) {
     switch (type) {
     case core::TetrominoType::I:
@@ -27,6 +30,48 @@ short color_for(core::TetrominoType type) {
     default:
         return 1;
     }
+}
+
+Footprint landing_footprint(const core::GameState &state) {
+    Footprint footprint{};
+    footprint.fill(false);
+
+    const auto &shape = core::tetromino_shape(state.active_piece.type);
+    const auto &cells = shape[static_cast<std::size_t>(state.active_piece.rotation)];
+
+    core::Tetromino projected = state.active_piece;
+    while (true) {
+        bool collision = false;
+        for (const auto &cell : cells) {
+            int x = projected.position.x + cell.x;
+            int y = projected.position.y + cell.y + 1;
+            if (x < 0 || x >= core::BOARD_WIDTH) {
+                collision = true;
+                break;
+            }
+            if (y >= core::BOARD_HEIGHT) {
+                collision = true;
+                break;
+            }
+            if (y >= 0 && state.board[y][x] != -1) {
+                collision = true;
+                break;
+            }
+        }
+        if (collision) {
+            break;
+        }
+        projected.position.y += 1;
+    }
+
+    for (const auto &cell : cells) {
+        int x = projected.position.x + cell.x;
+        if (x >= 0 && x < core::BOARD_WIDTH) {
+            footprint[static_cast<std::size_t>(x)] = true;
+        }
+    }
+
+    return footprint;
 }
 
 } // namespace
@@ -136,6 +181,25 @@ void NcursesFrontend::draw_board(const core::GameState &state) {
             }
         }
     }
+
+    const auto footprint = landing_footprint(state);
+    int indicator_y = offset_y + core::BOARD_HEIGHT + 1;
+    for (int x = 0; x < core::BOARD_WIDTH; ++x) {
+        int screen_x = offset_x + x * 2;
+        mvaddch(indicator_y, screen_x, '.');
+        mvaddch(indicator_y, screen_x + 1, '.');
+    }
+    short color = color_for(state.active_piece.type);
+    attron(COLOR_PAIR(color));
+    for (int x = 0; x < core::BOARD_WIDTH; ++x) {
+        if (!footprint[static_cast<std::size_t>(x)]) {
+            continue;
+        }
+        int screen_x = offset_x + x * 2;
+        mvaddch(indicator_y, screen_x, ' ' | A_REVERSE);
+        mvaddch(indicator_y, screen_x + 1, ' ' | A_REVERSE);
+    }
+    attroff(COLOR_PAIR(color));
 }
 
 void NcursesFrontend::draw_next_preview(const core::GameState &state) {
