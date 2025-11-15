@@ -10,7 +10,7 @@ int main() {
 
     using clock = std::chrono::steady_clock;
     auto last_tick = clock::now();
-    constexpr auto gravity = std::chrono::milliseconds{500};
+    auto gravity = game.gravity_interval();
 
     bool running = true;
     while (running) {
@@ -21,11 +21,13 @@ int main() {
         game.apply_action(action);
 
         auto now = clock::now();
+        gravity = game.gravity_interval();
         if (now - last_tick >= gravity) {
             if (!game.tick()) {
                 // allow player to quit after game over
             }
             last_tick = now;
+            gravity = game.gravity_interval();
         }
 
         frontend.render(game.state());

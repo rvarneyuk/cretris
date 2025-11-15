@@ -11,6 +11,9 @@ constexpr int spawn_x() { return BOARD_WIDTH / 2 - 1; }
 constexpr int spawn_y() { return 0; }
 
 constexpr std::array<int, 5> LINE_CLEAR_SCORES = {0, 100, 300, 500, 800};
+constexpr int BASE_GRAVITY_MS = 500;
+constexpr int GRAVITY_STEP_MS = 20;
+constexpr int MIN_GRAVITY_MS = 100;
 
 int lines_to_score(int lines) {
     if (lines < 0 || static_cast<std::size_t>(lines) >= LINE_CLEAR_SCORES.size()) {
@@ -154,6 +157,9 @@ void Game::clear_lines() {
     if (lines_cleared > 0) {
         state_.total_lines += lines_cleared;
         state_.score += lines_to_score(lines_cleared);
+
+        int computed_level = state_.total_lines / LINES_PER_LEVEL + 1;
+        state_.level = std::min(MAX_LEVEL, computed_level);
     }
 }
 
@@ -172,6 +178,13 @@ void Game::move_active(int dx, int dy) {
     if (!collides(moved)) {
         state_.active_piece = moved;
     }
+}
+
+std::chrono::milliseconds Game::gravity_interval() const {
+    int level_offset = std::max(0, state_.level - 1);
+    int ms = BASE_GRAVITY_MS - level_offset * GRAVITY_STEP_MS;
+    ms = std::max(MIN_GRAVITY_MS, ms);
+    return std::chrono::milliseconds{ms};
 }
 
 } // namespace cretris::core

@@ -2,7 +2,7 @@
 
 #include <ncurses.h>
 
-#include <string>
+#include <algorithm>
 #include <thread>
 
 namespace cretris::frontend {
@@ -26,27 +26,6 @@ short color_for(core::TetrominoType type) {
         return 7;
     default:
         return 1;
-    }
-}
-
-std::string name_for(core::TetrominoType type) {
-    switch (type) {
-    case core::TetrominoType::I:
-        return "I";
-    case core::TetrominoType::O:
-        return "O";
-    case core::TetrominoType::T:
-        return "T";
-    case core::TetrominoType::S:
-        return "S";
-    case core::TetrominoType::Z:
-        return "Z";
-    case core::TetrominoType::J:
-        return "J";
-    case core::TetrominoType::L:
-        return "L";
-    default:
-        return "?";
     }
 }
 
@@ -83,7 +62,7 @@ void NcursesFrontend::render(const core::GameState &state) {
     }
     erase();
     draw_board(state);
-    draw_queue(state);
+    draw_next_preview(state);
     draw_stats(state);
     refresh();
 }
@@ -159,18 +138,56 @@ void NcursesFrontend::draw_board(const core::GameState &state) {
     }
 }
 
-void NcursesFrontend::draw_queue(const core::GameState &state) {
+void NcursesFrontend::draw_next_preview(const core::GameState &state) {
     int start_y = 2;
     int start_x = core::BOARD_WIDTH * 2 + 6;
     mvprintw(start_y - 1, start_x, "Next:");
-    int idx = 0;
-    for (const auto &type : state.queue) {
-        if (idx >= core::QUEUE_SIZE) {
-            break;
+
+    constexpr int preview_cells = 4;
+    for (int y = 0; y < preview_cells; ++y) {
+        for (int x = 0; x < preview_cells; ++x) {
+            mvaddch(start_y + y, start_x + x * 2, '.');
+            mvaddch(start_y + y, start_x + x * 2 + 1, '.');
         }
-        mvprintw(start_y + idx, start_x, "%s", name_for(type).c_str());
-        ++idx;
     }
+
+    if (state.queue.empty()) {
+        return;
+    }
+
+    auto type = state.queue.front();
+    const auto &shape = core::tetromino_shape(type);
+    const auto &cells = shape[static_cast<std::size_t>(core::Rotation::R0)];
+
+    int min_x = cells[0].x;
+    int max_x = cells[0].x;
+    int min_y = cells[0].y;
+    int max_y = cells[0].y;
+    for (const auto &cell : cells) {
+        min_x = std::min(min_x, cell.x);
+        max_x = std::max(max_x, cell.x);
+        min_y = std::min(min_y, cell.y);
+        max_y = std::max(max_y, cell.y);
+    }
+
+    int width = max_x - min_x + 1;
+    int height = max_y - min_y + 1;
+    int offset_x = -min_x + (preview_cells - width) / 2;
+    int offset_y = -min_y + (preview_cells - height) / 2;
+
+    short color = color_for(type);
+    attron(COLOR_PAIR(color));
+    for (const auto &cell : cells) {
+        int px = cell.x + offset_x;
+        int py = cell.y + offset_y;
+        if (px >= 0 && px < preview_cells && py >= 0 && py < preview_cells) {
+            int screen_x = start_x + px * 2;
+            int screen_y = start_y + py;
+            mvaddch(screen_y, screen_x, ' ' | A_REVERSE);
+            mvaddch(screen_y, screen_x + 1, ' ' | A_REVERSE);
+        }
+    }
+    attroff(COLOR_PAIR(color));
 }
 
 void NcursesFrontend::draw_stats(const core::GameState &state) {
@@ -178,6 +195,14 @@ void NcursesFrontend::draw_stats(const core::GameState &state) {
     int y = core::QUEUE_SIZE + 4;
     mvprintw(y++, start_x, "Score: %d", state.score);
     mvprintw(y++, start_x, "Lines: %d", state.total_lines);
+    mvprintw(y++, start_x, "Level: %d", state.level);
+    if (state.level < core::MAX_LEVEL) {
+        int remainder = state.total_lines % core::LINES_PER_LEVEL;
+        int remaining = core::LINES_PER_LEVEL - remainder;
+        mvprintw(y++, start_x, "Next lvl: %d", remaining);
+    } else {
+        mvprintw(y++, start_x, "Max level reached");
+    }
     if (state.game_over) {
         mvprintw(y++, start_x, "GAME OVER (press x)");
     }

@@ -3,9 +3,10 @@
 Cretris is a terminal-first Tetris clone written in modern C++20. The gameplay core is independent from any specific presentation layer, enabling multiple front ends. The initial implementation ships with an ncurses renderer, and future front ends (for example SDL) can plug into the same interface.
 
 ## Features
-- Seven-bag randomizer, scoring, and line clearing implemented in the core engine
+- Seven-bag randomizer, scoring, level tracking, and line clearing implemented in the core engine
+- Every 20 cleared lines increase the level (capped at level 20) and speed up gravity ticks
 - Abstract `Frontend` interface that decouples rendering/input from the game loop
-- Ncurses front end with keyboard controls, next-queue preview, and score display
+- Ncurses front end with keyboard controls, a rendered next-piece preview, and score/level display
 
 ## Building
 The project uses CMake and depends on ncurses.

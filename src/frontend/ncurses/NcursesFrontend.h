@@ -16,7 +16,7 @@ public:
 
 private:
     void draw_board(const core::GameState &state);
-    void draw_queue(const core::GameState &state);
+    void draw_next_preview(const core::GameState &state);
     void draw_stats(const core::GameState &state);
 
     bool initialized_{false};
