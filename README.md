@@ -18,6 +18,13 @@ cmake -S . -B build
 cmake --build build
 ```
 
+Inside the development container you can run the helper script to install the
+required packages in one go:
+
+```bash
+./scripts/install_deps.sh
+```
+
 ## Running
 The SDL2 front end is used by default. Run the executable from the build directory:
 
