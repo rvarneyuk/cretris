@@ -22,8 +22,11 @@ private:
     double song_time_{0.0};
     double bass_phase_{0.0};
     double shimmer_phase_{0.0};
+    double lead_phase_{0.0};
+    double pad_phase_{0.0};
     double drop_phase_{0.0};
     double line_phase_{0.0};
+    double noise_state_{0.33};
     std::atomic<float> line_pulse_{0.0f};
     std::atomic<float> drop_pulse_{0.0f};
     std::atomic<float> tempo_mod_{0.0f};

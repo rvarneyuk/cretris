@@ -332,6 +332,19 @@ void SdlFrontend::draw_board(const core::GameState &state) {
     SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 60);
     SDL_RenderDrawRect(renderer_, &panel);
 
+    SDL_Rect board_border{BOARD_ORIGIN_X - 6, BOARD_ORIGIN_Y - 6, BOARD_WIDTH_PX + 12, BOARD_HEIGHT_PX + 12};
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 200);
+    SDL_RenderFillRect(renderer_, &board_border);
+    SDL_SetRenderDrawColor(renderer_, 0, 250, 220, 90);
+    SDL_RenderDrawRect(renderer_, &board_border);
+    SDL_Rect board_inner_border{BOARD_ORIGIN_X - 2, BOARD_ORIGIN_Y - 2, BOARD_WIDTH_PX + 4, BOARD_HEIGHT_PX + 4};
+    SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 40);
+    SDL_RenderDrawRect(renderer_, &board_inner_border);
+
+    SDL_Rect playfield{BOARD_ORIGIN_X, BOARD_ORIGIN_Y, BOARD_WIDTH_PX, BOARD_HEIGHT_PX};
+    SDL_SetRenderDrawColor(renderer_, 5, 10, 25, 255);
+    SDL_RenderFillRect(renderer_, &playfield);
+
     auto colors = palette();
     for (int y = 0; y < core::BOARD_HEIGHT; ++y) {
         for (int x = 0; x < core::BOARD_WIDTH; ++x) {
@@ -360,10 +373,34 @@ void SdlFrontend::draw_board(const core::GameState &state) {
     auto ghost = compute_ghost(state);
     SDL_Color ghost_color = colors[static_cast<std::size_t>(state.active_piece.type)];
     SDL_SetRenderDrawColor(renderer_, ghost_color.r, ghost_color.g, ghost_color.b, 80);
+    std::array<bool, core::BOARD_WIDTH> landing{};
+    landing.fill(false);
     for (const auto &cell : ghost) {
         SDL_Rect rect{BOARD_ORIGIN_X + cell.x * TILE_SIZE, BOARD_ORIGIN_Y + cell.y * TILE_SIZE, TILE_SIZE - 4,
                       TILE_SIZE - 4};
         SDL_RenderDrawRect(renderer_, &rect);
+        if (cell.x >= 0 && cell.x < core::BOARD_WIDTH) {
+            landing[static_cast<std::size_t>(cell.x)] = true;
+        }
+    }
+
+    SDL_Rect indicator_track{BOARD_ORIGIN_X, BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + 8, BOARD_WIDTH_PX, 12};
+    SDL_SetRenderDrawColor(renderer_, 8, 8, 30, 240);
+    SDL_RenderFillRect(renderer_, &indicator_track);
+    SDL_SetRenderDrawColor(renderer_, 0, 255, 230, 80);
+    SDL_RenderDrawRect(renderer_, &indicator_track);
+    SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 35);
+    for (int x = 0; x < core::BOARD_WIDTH; ++x) {
+        SDL_Rect notch{BOARD_ORIGIN_X + x * TILE_SIZE + TILE_SIZE / 2 - 1, indicator_track.y + indicator_track.h - 4, 2, 3};
+        SDL_RenderFillRect(renderer_, &notch);
+    }
+    SDL_SetRenderDrawColor(renderer_, ghost_color.r, ghost_color.g, ghost_color.b, 220);
+    for (int x = 0; x < core::BOARD_WIDTH; ++x) {
+        if (!landing[static_cast<std::size_t>(x)]) {
+            continue;
+        }
+        SDL_Rect rect{BOARD_ORIGIN_X + x * TILE_SIZE + 2, indicator_track.y + 2, TILE_SIZE - 6, indicator_track.h - 4};
+        SDL_RenderFillRect(renderer_, &rect);
     }
 }
 

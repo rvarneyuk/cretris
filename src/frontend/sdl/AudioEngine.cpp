@@ -1,8 +1,45 @@
 #include "AudioEngine.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numbers>
+
+namespace {
+
+constexpr std::array<int, 16> kBassLine = {38, 38, 45, 45, 41, 41, 48, 48, 38, 38, 45, 45, 43, 43, 50, 50};
+constexpr std::array<int, 8> kChordRoots = {50, 50, 53, 53, 57, 57, 48, 48};
+constexpr std::array<int, 32> kLeadLine = {79, 81, 79, 76, 74, 76, 72, 74, 76, 79, 81, 83, 81, 79, 76, 72,
+                                           74, 76, 79, 76, 74, 72, 71, 72, 74, 79, 76, 74, 72, 69, 67, 69};
+constexpr std::array<int, 4> kChordIntervals = {0, 3, 7, 10};
+
+double midi_to_freq(int midi) {
+    return 440.0 * std::pow(2.0, (static_cast<double>(midi) - 69.0) / 12.0);
+}
+
+double wrap_phase(double phase) {
+    phase = std::fmod(phase, 1.0);
+    if (phase < 0.0) {
+        phase += 1.0;
+    }
+    return phase;
+}
+
+double saw_wave(double phase) {
+    double wrapped = wrap_phase(phase);
+    return 2.0 * wrapped - 1.0;
+}
+
+double triangle_wave(double phase) {
+    double wrapped = wrap_phase(phase);
+    return 1.0 - 4.0 * std::abs(wrapped - 0.5);
+}
+
+double softstep(double value, double steepness) {
+    return std::exp(-value * steepness);
+}
+
+} // namespace
 
 namespace cretris::frontend {
 
@@ -47,30 +84,60 @@ void AudioEngine::audio_callback(void *userdata, Uint8 *stream, int len) {
     int frames = len / (sizeof(float) * 2);
     float line = self->line_pulse_.load();
     float drop = self->drop_pulse_.load();
-    float tempo = 0.75f + 0.45f * self->tempo_mod_.load();
+    float tempo_mod = self->tempo_mod_.load();
+    double tempo = 1.15 + 0.75 * tempo_mod;
     double sample_rate = static_cast<double>(self->obtained_.freq);
 
     for (int i = 0; i < frames; ++i) {
         double t = self->song_time_;
-        double beat = std::fmod(t * tempo * 2.0, 4.0);
-        double bass_freq = (beat < 2.0) ? 110.0 : 147.0;
-        double melody_freqs[] = {440.0, 392.0, 523.25, 349.23};
-        int melody_index = static_cast<int>(std::fmod(t * tempo * 1.5, 4.0));
-        double melody_freq = melody_freqs[melody_index];
+        double beats = t * tempo;
+        double sixteenth = beats * 4.0;
+        int int_sixteenth = static_cast<int>(sixteenth);
+        double step_fraction = sixteenth - static_cast<double>(int_sixteenth);
+        int bass_index = (int_sixteenth / 2) % static_cast<int>(kBassLine.size());
+        int lead_index = int_sixteenth % static_cast<int>(kLeadLine.size());
+        int chord_index = static_cast<int>(beats) % static_cast<int>(kChordRoots.size());
 
-        double bass = std::sin(2.0 * std::numbers::pi_v<double> * self->bass_phase_);
-        double shimmer = std::sin(2.0 * std::numbers::pi_v<double> * self->shimmer_phase_);
-        self->bass_phase_ += bass_freq / sample_rate;
-        self->shimmer_phase_ += melody_freq / sample_rate;
-        if (self->bass_phase_ >= 1.0) {
-            self->bass_phase_ -= 1.0;
+        double bass_freq = midi_to_freq(kBassLine[static_cast<std::size_t>(bass_index)]);
+        self->bass_phase_ = wrap_phase(self->bass_phase_ + bass_freq / sample_rate);
+        double bass = triangle_wave(self->bass_phase_) * 0.35 * softstep(step_fraction, 2.6);
+
+        double lead_freq = midi_to_freq(kLeadLine[static_cast<std::size_t>(lead_index)]);
+        self->shimmer_phase_ = wrap_phase(self->shimmer_phase_ + lead_freq / sample_rate);
+        double lead = std::sin(2.0 * std::numbers::pi_v<double> * self->shimmer_phase_);
+        lead *= 0.22 * (0.35 + softstep(step_fraction, 3.4));
+
+        int arp_index = (int_sixteenth / 4) % static_cast<int>(kChordRoots.size());
+        double arp_freq = midi_to_freq(kChordRoots[static_cast<std::size_t>(arp_index)] + 12 + (int_sixteenth % 4) * 2);
+        self->lead_phase_ = wrap_phase(self->lead_phase_ + arp_freq / sample_rate);
+        double arp = saw_wave(self->lead_phase_) * 0.12;
+
+        double pad_freq = midi_to_freq(kChordRoots[static_cast<std::size_t>(chord_index)]);
+        self->pad_phase_ = wrap_phase(self->pad_phase_ + pad_freq / sample_rate * 0.25);
+        double pad = 0.0;
+        for (int interval : kChordIntervals) {
+            double freq = midi_to_freq(kChordRoots[static_cast<std::size_t>(chord_index)] + interval);
+            double phase = wrap_phase(self->pad_phase_ * freq / pad_freq);
+            pad += saw_wave(phase);
         }
-        if (self->shimmer_phase_ >= 1.0) {
-            self->shimmer_phase_ -= 1.0;
+        pad = (pad / static_cast<double>(kChordIntervals.size())) * 0.18;
+
+        double beat_fraction = beats - std::floor(beats);
+        double kick_carrier = std::sin(2.0 * std::numbers::pi_v<double> * (beat_fraction * (1.0 + 2.0 * (1.0 - beat_fraction))));
+        double kick = kick_carrier * 0.55 * softstep(beat_fraction, 7.0);
+
+        self->noise_state_ = std::fmod(self->noise_state_ * 987.654321 + 0.12345, 1.0);
+        double white = self->noise_state_ * 2.0 - 1.0;
+        int hat_step = int_sixteenth % 16;
+        double hat_env = softstep(step_fraction, 48.0);
+        double hat = white * hat_env * ((hat_step % 2 == 0) ? 0.25 : 0.55);
+        double snare = 0.0;
+        if (hat_step == 4 || hat_step == 12) {
+            snare = white * 0.5 * softstep(step_fraction, 20.0);
         }
 
-        double pad = std::sin(2.0 * std::numbers::pi_v<double> * (t * 0.5)) * 0.2;
-        double sample = bass * 0.18 + shimmer * 0.12 + pad;
+        double ambience = std::sin(2.0 * std::numbers::pi_v<double> * (t * 0.2)) * 0.08;
+        double sample = bass + pad + lead + arp + hat + snare + kick + ambience;
 
         if (line > 0.0f) {
             sample += std::sin(2.0 * std::numbers::pi_v<double> * self->line_phase_) * (0.3 * line);
