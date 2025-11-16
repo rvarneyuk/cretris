@@ -33,19 +33,19 @@ int note_at_step(const std::array<NoteEvent, N> &sequence, int step, int period)
     return sequence.back().midi;
 }
 
-// Lead melody adapted from the public-domain "Ah! vous dirai-je, maman"
-// (better known as "Twinkle, Twinkle, Little Star").
-constexpr std::array<NoteEvent, 42> kMelody = {{{72, 4}, {72, 4}, {79, 4}, {79, 4}, {81, 4}, {81, 4}, {79, 8},
-                                                {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 4}, {74, 4}, {72, 8},
-                                                {79, 4}, {79, 4}, {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 8},
-                                                {79, 4}, {79, 4}, {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 8},
-                                                {72, 4}, {72, 4}, {79, 4}, {79, 4}, {81, 4}, {81, 4}, {79, 8},
-                                                {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 4}, {74, 4}, {72, 8}}};
+// Lead melody adapted from the public-domain "Ode to Joy" by Ludwig van Beethoven.
+constexpr std::array<NoteEvent, 48> kMelody = {{{64, 4}, {64, 4}, {65, 4}, {67, 4}, {67, 4}, {65, 4}, {64, 4}, {62, 4},
+                                                {60, 4}, {60, 4}, {62, 4}, {64, 4}, {62, 4}, {60, 8},
+                                                {62, 4}, {62, 4}, {64, 4}, {65, 4}, {65, 4}, {64, 4}, {62, 4}, {60, 4},
+                                                {60, 4}, {62, 4}, {64, 4}, {62, 4}, {60, 8},
+                                                {64, 4}, {64, 4}, {60, 4}, {62, 4}, {64, 4}, {65, 4}, {67, 6}, {65, 2},
+                                                {64, 4}, {64, 4}, {60, 4}, {62, 4}, {64, 4}, {65, 4}, {67, 6}, {65, 2},
+                                                {64, 4}, {62, 4}, {60, 4}, {62, 4}, {60, 8}}};
 
-constexpr std::array<NoteEvent, 16> kBassSequence = {{{48, 8}, {43, 8}, {41, 8}, {38, 8}, {43, 8}, {38, 8}, {41, 8}, {36, 8},
-                                                      {48, 8}, {43, 8}, {41, 8}, {38, 8}, {43, 8}, {38, 8}, {41, 8}, {36, 8}}};
+constexpr std::array<NoteEvent, 16> kBassSequence = {{{48, 8}, {48, 8}, {43, 8}, {45, 8}, {41, 8}, {45, 8}, {43, 8}, {48, 8},
+                                                      {48, 8}, {48, 8}, {43, 8}, {45, 8}, {41, 8}, {45, 8}, {43, 8}, {48, 8}}};
 
-constexpr std::array<NoteEvent, 8> kPadSequence = {{{48, 16}, {55, 16}, {53, 16}, {48, 16}, {55, 16}, {53, 16}, {48, 16}, {53, 16}}};
+constexpr std::array<NoteEvent, 8> kPadSequence = {{{48, 16}, {43, 16}, {45, 16}, {41, 16}, {48, 16}, {43, 16}, {45, 16}, {48, 16}}};
 
 constexpr int kMelodyPeriod = total_duration(kMelody);
 constexpr int kBassPeriod = total_duration(kBassSequence);
