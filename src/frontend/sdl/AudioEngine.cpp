@@ -74,8 +74,17 @@ double triangle_wave(double phase) {
     return 1.0 - 4.0 * std::abs(wrapped - 0.5);
 }
 
+double square_wave(double phase) {
+    double wrapped = wrap_phase(phase);
+    return wrapped < 0.5 ? 1.0 : -1.0;
+}
+
 double softstep(double value, double steepness) {
     return std::exp(-value * steepness);
+}
+
+double approach(double current, double target, double coeff) {
+    return current + (target - current) * coeff;
 }
 
 } // namespace
@@ -137,28 +146,58 @@ void AudioEngine::audio_callback(void *userdata, Uint8 *stream, int len) {
         int bass_note = note_at_step(kBassSequence, int_sixteenth, kBassPeriod);
         int pad_root = note_at_step(kPadSequence, int_sixteenth, kPadPeriod);
 
-        double bass_freq = midi_to_freq(bass_note);
-        self->bass_phase_ = wrap_phase(self->bass_phase_ + bass_freq / sample_rate);
-        double bass = triangle_wave(self->bass_phase_) * 0.35 * softstep(step_fraction, 2.6);
+        if (melody_note != self->last_lead_note_) {
+            self->lead_env_ = 1.0;
+            self->lead_phase_ = 0.0;
+            self->lead_phase_b_ = 0.25;
+            self->last_lead_note_ = melody_note;
+        }
+        if (bass_note != self->last_bass_note_) {
+            self->bass_env_ = 1.0;
+            self->bass_phase_ = 0.0;
+            self->bass_phase_sub_ = 0.0;
+            self->last_bass_note_ = bass_note;
+        }
+        if (pad_root != self->last_pad_note_) {
+            self->pad_env_ = 1.0;
+            self->pad_phase_ = 0.0;
+            self->last_pad_note_ = pad_root;
+        }
+
+        self->lead_env_ = approach(self->lead_env_, 0.68, 0.00035);
+        self->bass_env_ = approach(self->bass_env_, 0.55, 0.0006);
+        self->pad_env_ = approach(self->pad_env_, 0.9, 0.00012);
 
         double lead_freq = midi_to_freq(melody_note);
-        self->shimmer_phase_ = wrap_phase(self->shimmer_phase_ + lead_freq / sample_rate);
-        double lead = std::sin(2.0 * std::numbers::pi_v<double> * self->shimmer_phase_);
-        lead *= 0.22 * (0.35 + softstep(step_fraction, 3.4));
+        self->vibrato_phase_ = wrap_phase(self->vibrato_phase_ + 5.2 / sample_rate);
+        double vibrato = std::sin(2.0 * std::numbers::pi_v<double> * self->vibrato_phase_) * 0.006;
+        self->lead_phase_ = wrap_phase(self->lead_phase_ + (lead_freq * (1.0 + vibrato * 0.75)) / sample_rate);
+        self->lead_phase_b_ = wrap_phase(self->lead_phase_b_ + (lead_freq * 0.997) / sample_rate);
+        double lead_a = saw_wave(self->lead_phase_);
+        double lead_b = square_wave(self->lead_phase_b_);
+        double lead = (lead_a * 0.65 + lead_b * 0.35) * self->lead_env_ * (0.25 + softstep(step_fraction, 3.8) * 0.45);
 
-        double arp_freq = midi_to_freq(pad_root + 12 + (int_sixteenth % 4) * 2);
-        self->lead_phase_ = wrap_phase(self->lead_phase_ + arp_freq / sample_rate);
-        double arp = saw_wave(self->lead_phase_) * 0.12;
+        double bass_freq = midi_to_freq(bass_note);
+        self->bass_phase_ = wrap_phase(self->bass_phase_ + bass_freq / sample_rate);
+        self->bass_phase_sub_ = wrap_phase(self->bass_phase_sub_ + (bass_freq * 0.5) / sample_rate);
+        double bass_carrier = triangle_wave(self->bass_phase_) * 0.55 + std::sin(2.0 * std::numbers::pi_v<double> * self->bass_phase_sub_) * 0.45;
+        double bass = bass_carrier * self->bass_env_ * (0.4 + softstep(step_fraction, 2.2) * 0.4);
 
         double pad_freq = midi_to_freq(pad_root);
-        self->pad_phase_ = wrap_phase(self->pad_phase_ + pad_freq / sample_rate * 0.25);
+        self->pad_phase_ = wrap_phase(self->pad_phase_ + pad_freq / sample_rate * 0.35);
+        self->pad_lfo_phase_ = wrap_phase(self->pad_lfo_phase_ + 0.12 / sample_rate);
+        double pad_lfo = (std::sin(2.0 * std::numbers::pi_v<double> * self->pad_lfo_phase_) + 1.0) * 0.5;
         double pad = 0.0;
         for (int interval : kChordIntervals) {
-            double freq = midi_to_freq(pad_root + interval);
+            double freq = midi_to_freq(pad_root + interval - 12);
             double phase = wrap_phase(self->pad_phase_ * freq / pad_freq);
-            pad += saw_wave(phase);
+            pad += triangle_wave(phase) * (0.75 + pad_lfo * 0.25);
         }
-        pad = (pad / static_cast<double>(kChordIntervals.size())) * 0.18;
+        pad = (pad / static_cast<double>(kChordIntervals.size())) * self->pad_env_ * 0.22;
+
+        double arp_freq = midi_to_freq(pad_root + 12 + (int_sixteenth % 4) * 2);
+        self->shimmer_phase_ = wrap_phase(self->shimmer_phase_ + arp_freq / sample_rate);
+        double arp = saw_wave(self->shimmer_phase_) * 0.13 * softstep(step_fraction, 5.5);
 
         double beat_fraction = beats - std::floor(beats);
         double kick_carrier = std::sin(2.0 * std::numbers::pi_v<double> * (beat_fraction * (1.0 + 2.0 * (1.0 - beat_fraction))));
@@ -171,7 +210,7 @@ void AudioEngine::audio_callback(void *userdata, Uint8 *stream, int len) {
         double hat = white * hat_env * ((hat_step % 2 == 0) ? 0.25 : 0.55);
         double snare = 0.0;
         if (hat_step == 4 || hat_step == 12) {
-            snare = white * 0.5 * softstep(step_fraction, 20.0);
+            snare = white * 0.45 * softstep(step_fraction, 20.0);
         }
 
         double ambience = std::sin(2.0 * std::numbers::pi_v<double> * (t * 0.2)) * 0.08;
