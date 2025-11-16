@@ -513,17 +513,18 @@ void SdlFrontend::draw_next_queue(const core::GameState &state) {
 
 void SdlFrontend::draw_stats(const core::GameState &state) {
     int text_x = BOARD_ORIGIN_X;
-    int text_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + 20;
+    int text_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + 4;
+    int value_offset = 26;
     SDL_Color label{255, 255, 255, 255};
     SDL_Color accent{255, 180, 40, 255};
     render_text("SCORE", text_x, text_y, 3, label);
-    render_text(std::to_string(state.score), text_x, text_y + 32, 4, accent);
+    render_text(std::to_string(state.score), text_x, text_y + value_offset, 4, accent);
 
     render_text("LINES", text_x + 280, text_y, 3, label);
-    render_text(std::to_string(state.total_lines), text_x + 280, text_y + 32, 4, accent);
+    render_text(std::to_string(state.total_lines), text_x + 280, text_y + value_offset, 4, accent);
 
     render_text("LEVEL", text_x + 520, text_y, 3, label);
-    render_text(std::to_string(state.level), text_x + 520, text_y + 32, 4, accent);
+    render_text(std::to_string(state.level), text_x + 520, text_y + value_offset, 4, accent);
 
     int controls_x = BOARD_ORIGIN_X + BOARD_WIDTH_PX + 60;
     int controls_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX - 120;
