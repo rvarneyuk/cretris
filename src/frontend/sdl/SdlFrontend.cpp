@@ -17,12 +17,14 @@ namespace cretris::frontend {
 namespace {
 
 constexpr int WINDOW_WIDTH = 1280;
-constexpr int WINDOW_HEIGHT = 720;
+constexpr int WINDOW_HEIGHT = 780;
 constexpr int TILE_SIZE = 30;
 constexpr int BOARD_WIDTH_PX = core::BOARD_WIDTH * TILE_SIZE;
 constexpr int BOARD_HEIGHT_PX = core::BOARD_HEIGHT * TILE_SIZE;
 constexpr int BOARD_ORIGIN_X = 140;
 constexpr int BOARD_ORIGIN_Y = 50;
+constexpr int INDICATOR_TRACK_MARGIN = 8;
+constexpr int INDICATOR_TRACK_HEIGHT = 12;
 constexpr int FONT_WIDTH = 5;
 constexpr int FONT_HEIGHT = 5;
 constexpr float PI = 3.14159265f;
@@ -414,7 +416,8 @@ void SdlFrontend::draw_board(const core::GameState &state) {
         }
     }
 
-    SDL_Rect indicator_track{BOARD_ORIGIN_X, BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + 8, BOARD_WIDTH_PX, 12};
+    SDL_Rect indicator_track{BOARD_ORIGIN_X, BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + INDICATOR_TRACK_MARGIN, BOARD_WIDTH_PX,
+                             INDICATOR_TRACK_HEIGHT};
     SDL_SetRenderDrawColor(renderer_, 8, 8, 30, 240);
     SDL_RenderFillRect(renderer_, &indicator_track);
     SDL_SetRenderDrawColor(renderer_, 0, 255, 230, 80);
@@ -513,7 +516,7 @@ void SdlFrontend::draw_next_queue(const core::GameState &state) {
 
 void SdlFrontend::draw_stats(const core::GameState &state) {
     int text_x = BOARD_ORIGIN_X;
-    int text_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + 4;
+    int text_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + INDICATOR_TRACK_MARGIN + INDICATOR_TRACK_HEIGHT + 14;
     int value_offset = 26;
     SDL_Color label{255, 255, 255, 255};
     SDL_Color accent{255, 180, 40, 255};
