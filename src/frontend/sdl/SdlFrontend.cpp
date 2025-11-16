@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
+#include <cmath>
 #include <initializer_list>
 #include <string>
 #include <unordered_map>
@@ -15,14 +17,18 @@ namespace cretris::frontend {
 namespace {
 
 constexpr int WINDOW_WIDTH = 1280;
-constexpr int WINDOW_HEIGHT = 720;
+constexpr int WINDOW_HEIGHT = 780;
 constexpr int TILE_SIZE = 30;
 constexpr int BOARD_WIDTH_PX = core::BOARD_WIDTH * TILE_SIZE;
 constexpr int BOARD_HEIGHT_PX = core::BOARD_HEIGHT * TILE_SIZE;
 constexpr int BOARD_ORIGIN_X = 140;
 constexpr int BOARD_ORIGIN_Y = 50;
+constexpr int INDICATOR_TRACK_MARGIN = 8;
+constexpr int INDICATOR_TRACK_HEIGHT = 12;
 constexpr int FONT_WIDTH = 5;
 constexpr int FONT_HEIGHT = 5;
+constexpr float PI = 3.14159265f;
+constexpr std::chrono::milliseconds LINE_FLASH_DURATION{450};
 
 struct Glyph {
     std::array<uint8_t, FONT_HEIGHT> rows{};
@@ -204,6 +210,32 @@ void SdlFrontend::render(const core::GameState &state) {
         return;
     }
 
+    if (last_state_initialized_) {
+        int line_delta = state.total_lines - last_state_.total_lines;
+        if (line_delta > 0) {
+            line_flash_active_ = true;
+            line_flash_start_ = std::chrono::steady_clock::now();
+            line_flash_count_ = std::clamp(line_delta, 1, 4);
+            line_flash_rows_.clear();
+            for (int y = core::BOARD_HEIGHT - 1;
+                 y >= 0 && static_cast<int>(line_flash_rows_.size()) < line_flash_count_; --y) {
+                bool previous_full = true;
+                for (int x = 0; x < core::BOARD_WIDTH; ++x) {
+                    if (last_state_.board[y][x] == -1) {
+                        previous_full = false;
+                        break;
+                    }
+                }
+                if (previous_full) {
+                    line_flash_rows_.push_back(y);
+                }
+            }
+            if (line_flash_rows_.empty()) {
+                line_flash_rows_.push_back(core::BOARD_HEIGHT - 1);
+            }
+        }
+    }
+
     draw_background();
     draw_board(state);
     draw_next_queue(state);
@@ -332,6 +364,19 @@ void SdlFrontend::draw_board(const core::GameState &state) {
     SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 60);
     SDL_RenderDrawRect(renderer_, &panel);
 
+    SDL_Rect board_border{BOARD_ORIGIN_X - 6, BOARD_ORIGIN_Y - 6, BOARD_WIDTH_PX + 12, BOARD_HEIGHT_PX + 12};
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 200);
+    SDL_RenderFillRect(renderer_, &board_border);
+    SDL_SetRenderDrawColor(renderer_, 0, 250, 220, 90);
+    SDL_RenderDrawRect(renderer_, &board_border);
+    SDL_Rect board_inner_border{BOARD_ORIGIN_X - 2, BOARD_ORIGIN_Y - 2, BOARD_WIDTH_PX + 4, BOARD_HEIGHT_PX + 4};
+    SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 40);
+    SDL_RenderDrawRect(renderer_, &board_inner_border);
+
+    SDL_Rect playfield{BOARD_ORIGIN_X, BOARD_ORIGIN_Y, BOARD_WIDTH_PX, BOARD_HEIGHT_PX};
+    SDL_SetRenderDrawColor(renderer_, 5, 10, 25, 255);
+    SDL_RenderFillRect(renderer_, &playfield);
+
     auto colors = palette();
     for (int y = 0; y < core::BOARD_HEIGHT; ++y) {
         for (int x = 0; x < core::BOARD_WIDTH; ++x) {
@@ -360,10 +405,66 @@ void SdlFrontend::draw_board(const core::GameState &state) {
     auto ghost = compute_ghost(state);
     SDL_Color ghost_color = colors[static_cast<std::size_t>(state.active_piece.type)];
     SDL_SetRenderDrawColor(renderer_, ghost_color.r, ghost_color.g, ghost_color.b, 80);
+    std::array<bool, core::BOARD_WIDTH> landing{};
+    landing.fill(false);
     for (const auto &cell : ghost) {
         SDL_Rect rect{BOARD_ORIGIN_X + cell.x * TILE_SIZE, BOARD_ORIGIN_Y + cell.y * TILE_SIZE, TILE_SIZE - 4,
                       TILE_SIZE - 4};
         SDL_RenderDrawRect(renderer_, &rect);
+        if (cell.x >= 0 && cell.x < core::BOARD_WIDTH) {
+            landing[static_cast<std::size_t>(cell.x)] = true;
+        }
+    }
+
+    SDL_Rect indicator_track{BOARD_ORIGIN_X, BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + INDICATOR_TRACK_MARGIN, BOARD_WIDTH_PX,
+                             INDICATOR_TRACK_HEIGHT};
+    SDL_SetRenderDrawColor(renderer_, 8, 8, 30, 240);
+    SDL_RenderFillRect(renderer_, &indicator_track);
+    SDL_SetRenderDrawColor(renderer_, 0, 255, 230, 80);
+    SDL_RenderDrawRect(renderer_, &indicator_track);
+    SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 35);
+    for (int x = 0; x < core::BOARD_WIDTH; ++x) {
+        SDL_Rect notch{BOARD_ORIGIN_X + x * TILE_SIZE + TILE_SIZE / 2 - 1, indicator_track.y + indicator_track.h - 4, 2, 3};
+        SDL_RenderFillRect(renderer_, &notch);
+    }
+    SDL_SetRenderDrawColor(renderer_, ghost_color.r, ghost_color.g, ghost_color.b, 220);
+    for (int x = 0; x < core::BOARD_WIDTH; ++x) {
+        if (!landing[static_cast<std::size_t>(x)]) {
+            continue;
+        }
+        SDL_Rect rect{BOARD_ORIGIN_X + x * TILE_SIZE + 2, indicator_track.y + 2, TILE_SIZE - 6, indicator_track.h - 4};
+        SDL_RenderFillRect(renderer_, &rect);
+    }
+
+    if (line_flash_active_) {
+        auto now = std::chrono::steady_clock::now();
+        float progress = std::chrono::duration<float>(now - line_flash_start_).count() /
+                         std::chrono::duration<float>(LINE_FLASH_DURATION).count();
+        if (progress >= 1.0f) {
+            line_flash_active_ = false;
+        } else {
+            float fade = 1.0f - progress;
+            float emphasis = static_cast<float>(line_flash_count_) / 4.0f;
+            float pulse = std::sin(progress * PI);
+            float intensity = std::clamp((0.35f + 0.65f * emphasis) * (fade + 0.25f * pulse), 0.0f, 1.0f);
+
+            SDL_Rect flash_overlay{BOARD_ORIGIN_X, BOARD_ORIGIN_Y, BOARD_WIDTH_PX, BOARD_HEIGHT_PX};
+            SDL_SetRenderDrawColor(renderer_, 255, 255, 255, static_cast<Uint8>(140 * intensity));
+            SDL_RenderFillRect(renderer_, &flash_overlay);
+
+            for (int row : line_flash_rows_) {
+                int row_y = BOARD_ORIGIN_Y + row * TILE_SIZE;
+                SDL_Rect band{BOARD_ORIGIN_X - 4, row_y - 2, BOARD_WIDTH_PX + 8, TILE_SIZE + 4};
+                SDL_SetRenderDrawColor(renderer_, 255, 210, 120, static_cast<Uint8>(200 * intensity));
+                SDL_RenderFillRect(renderer_, &band);
+                SDL_SetRenderDrawColor(renderer_, 255, 255, 255, static_cast<Uint8>(220 * intensity));
+                SDL_RenderDrawRect(renderer_, &band);
+            }
+
+            SDL_Rect glow{BOARD_ORIGIN_X - 10, BOARD_ORIGIN_Y - 10, BOARD_WIDTH_PX + 20, BOARD_HEIGHT_PX + 20};
+            SDL_SetRenderDrawColor(renderer_, 0, 255, 230, static_cast<Uint8>(190 * intensity));
+            SDL_RenderDrawRect(renderer_, &glow);
+        }
     }
 }
 
@@ -372,7 +473,7 @@ void SdlFrontend::draw_next_queue(const core::GameState &state) {
     int block_size = TILE_SIZE - 6;
     int box_x = BOARD_ORIGIN_X + BOARD_WIDTH_PX + 60;
     int box_y = BOARD_ORIGIN_Y;
-    SDL_Rect backdrop{box_x - 20, box_y - 20, 260, BOARD_HEIGHT_PX};
+    SDL_Rect backdrop{box_x - 20, box_y - 20, 220, 220};
     SDL_SetRenderDrawColor(renderer_, 8, 8, 25, 200);
     SDL_RenderFillRect(renderer_, &backdrop);
     SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 50);
@@ -380,10 +481,10 @@ void SdlFrontend::draw_next_queue(const core::GameState &state) {
 
     render_text("NEXT", box_x, box_y - 10, 3, SDL_Color{255, 255, 255, 255});
 
-    int offset_y = box_y + 50;
-    int preview_count = std::min(static_cast<int>(state.queue.size()), 3);
-    for (int i = 0; i < preview_count; ++i) {
-        auto type = state.queue[static_cast<std::size_t>(i)];
+    int preview_count = std::min(static_cast<int>(state.queue.size()), 1);
+    if (preview_count > 0) {
+        int offset_y = box_y + 50;
+        auto type = state.queue.front();
         const auto &shape = core::tetromino_shape(type);
         const auto &mask = shape[static_cast<std::size_t>(core::Rotation::R0)];
         int min_x = mask[0].x, max_x = mask[0].x, min_y = mask[0].y, max_y = mask[0].y;
@@ -395,11 +496,12 @@ void SdlFrontend::draw_next_queue(const core::GameState &state) {
         }
         int width = max_x - min_x + 1;
         int height = max_y - min_y + 1;
-        int local_origin_x = box_x + (180 - width * block_size) / 2;
-        int local_origin_y = offset_y + (120 - height * block_size) / 2;
         SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 18);
         SDL_Rect frame{box_x, offset_y, 180, 120};
         SDL_RenderDrawRect(renderer_, &frame);
+
+        int local_origin_x = box_x + (frame.w - width * block_size) / 2;
+        int local_origin_y = offset_y + (frame.h - height * block_size) / 2;
 
         const auto &color = colors[static_cast<std::size_t>(type)];
         for (const auto &cell : mask) {
@@ -409,23 +511,23 @@ void SdlFrontend::draw_next_queue(const core::GameState &state) {
             SDL_SetRenderDrawColor(renderer_, color.r, color.g, color.b, 255);
             SDL_RenderFillRect(renderer_, &rect);
         }
-        offset_y += 140;
     }
 }
 
 void SdlFrontend::draw_stats(const core::GameState &state) {
     int text_x = BOARD_ORIGIN_X;
-    int text_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + 20;
+    int text_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX + INDICATOR_TRACK_MARGIN + INDICATOR_TRACK_HEIGHT + 14;
+    int value_offset = 26;
     SDL_Color label{255, 255, 255, 255};
     SDL_Color accent{255, 180, 40, 255};
     render_text("SCORE", text_x, text_y, 3, label);
-    render_text(std::to_string(state.score), text_x, text_y + 32, 4, accent);
+    render_text(std::to_string(state.score), text_x, text_y + value_offset, 4, accent);
 
     render_text("LINES", text_x + 280, text_y, 3, label);
-    render_text(std::to_string(state.total_lines), text_x + 280, text_y + 32, 4, accent);
+    render_text(std::to_string(state.total_lines), text_x + 280, text_y + value_offset, 4, accent);
 
     render_text("LEVEL", text_x + 520, text_y, 3, label);
-    render_text(std::to_string(state.level), text_x + 520, text_y + 32, 4, accent);
+    render_text(std::to_string(state.level), text_x + 520, text_y + value_offset, 4, accent);
 
     int controls_x = BOARD_ORIGIN_X + BOARD_WIDTH_PX + 60;
     int controls_y = BOARD_ORIGIN_Y + BOARD_HEIGHT_PX - 120;
