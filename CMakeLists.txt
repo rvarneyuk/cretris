@@ -19,6 +19,7 @@ add_executable(cretris
     src/core/Game.cpp
     src/core/Tetromino.cpp
     src/frontend/ncurses/NcursesFrontend.cpp
+    src/frontend/sdl/AudioEngine.cpp
     src/frontend/sdl/SdlFrontend.cpp
     src/main.cpp)
 

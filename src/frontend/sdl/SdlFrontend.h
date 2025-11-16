@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Frontend.h"
+#include "AudioEngine.h"
 
 #include <SDL2/SDL.h>
 
@@ -10,8 +11,6 @@
 #include <string>
 
 namespace cretris::frontend {
-
-struct AudioEngine;
 
 class SdlFrontend : public Frontend {
 public:
