@@ -9,6 +9,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace cretris::frontend {
 
@@ -33,6 +34,10 @@ private:
 
     core::GameState last_state_{};
     bool last_state_initialized_{false};
+    std::chrono::steady_clock::time_point line_flash_start_{};
+    bool line_flash_active_{false};
+    int line_flash_count_{0};
+    std::vector<int> line_flash_rows_{};
 
     SDL_Window *window_{nullptr};
     SDL_Renderer *renderer_{nullptr};
