@@ -58,10 +58,10 @@ constexpr RotationTable J_TABLE = make_table({
 });
 
 constexpr RotationTable L_TABLE = make_table({
-    {{{-1, 0}, {0, 0}, {1, 0}, {1, 1}}},
-    {{{0, 1}, {0, 0}, {0, -1}, {1, -1}}},
-    {{{1, 0}, {0, 0}, {-1, 0}, {-1, -1}}},
-    {{{0, -1}, {0, 0}, {0, 1}, {-1, 1}}},
+    {{{-1, 0}, {0, 0}, {1, 0}, {1, -1}}},
+    {{{0, -1}, {0, 0}, {0, 1}, {1, 1}}},
+    {{{-1, 0}, {0, 0}, {1, 0}, {-1, 1}}},
+    {{{0, -1}, {0, 0}, {0, 1}, {-1, -1}}},
 });
 
 constexpr std::array<RotationTable, static_cast<std::size_t>(TetrominoType::Count)> TABLES = {

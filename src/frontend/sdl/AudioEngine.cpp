@@ -7,11 +7,50 @@
 
 namespace {
 
-constexpr std::array<int, 16> kBassLine = {38, 38, 45, 45, 41, 41, 48, 48, 38, 38, 45, 45, 43, 43, 50, 50};
-constexpr std::array<int, 8> kChordRoots = {50, 50, 53, 53, 57, 57, 48, 48};
-constexpr std::array<int, 32> kLeadLine = {79, 81, 79, 76, 74, 76, 72, 74, 76, 79, 81, 83, 81, 79, 76, 72,
-                                           74, 76, 79, 76, 74, 72, 71, 72, 74, 79, 76, 74, 72, 69, 67, 69};
-constexpr std::array<int, 4> kChordIntervals = {0, 3, 7, 10};
+struct NoteEvent {
+    int midi;
+    int duration; // in sixteenth notes
+};
+
+template <std::size_t N>
+constexpr int total_duration(const std::array<NoteEvent, N> &sequence) {
+    int total = 0;
+    for (const auto &event : sequence) {
+        total += event.duration;
+    }
+    return total;
+}
+
+template <std::size_t N>
+int note_at_step(const std::array<NoteEvent, N> &sequence, int step, int period) {
+    int position = period > 0 ? step % period : 0;
+    for (const auto &event : sequence) {
+        if (position < event.duration) {
+            return event.midi;
+        }
+        position -= event.duration;
+    }
+    return sequence.back().midi;
+}
+
+// Lead melody adapted from the public-domain "Ah! vous dirai-je, maman"
+// (better known as "Twinkle, Twinkle, Little Star").
+constexpr std::array<NoteEvent, 42> kMelody = {{{72, 4}, {72, 4}, {79, 4}, {79, 4}, {81, 4}, {81, 4}, {79, 8},
+                                                {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 4}, {74, 4}, {72, 8},
+                                                {79, 4}, {79, 4}, {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 8},
+                                                {79, 4}, {79, 4}, {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 8},
+                                                {72, 4}, {72, 4}, {79, 4}, {79, 4}, {81, 4}, {81, 4}, {79, 8},
+                                                {77, 4}, {77, 4}, {76, 4}, {76, 4}, {74, 4}, {74, 4}, {72, 8}}};
+
+constexpr std::array<NoteEvent, 16> kBassSequence = {{{48, 8}, {43, 8}, {41, 8}, {38, 8}, {43, 8}, {38, 8}, {41, 8}, {36, 8},
+                                                      {48, 8}, {43, 8}, {41, 8}, {38, 8}, {43, 8}, {38, 8}, {41, 8}, {36, 8}}};
+
+constexpr std::array<NoteEvent, 8> kPadSequence = {{{48, 16}, {55, 16}, {53, 16}, {48, 16}, {55, 16}, {53, 16}, {48, 16}, {53, 16}}};
+
+constexpr int kMelodyPeriod = total_duration(kMelody);
+constexpr int kBassPeriod = total_duration(kBassSequence);
+constexpr int kPadPeriod = total_duration(kPadSequence);
+constexpr std::array<int, 4> kChordIntervals = {0, 4, 7, 11};
 
 double midi_to_freq(int midi) {
     return 440.0 * std::pow(2.0, (static_cast<double>(midi) - 69.0) / 12.0);
@@ -94,29 +133,28 @@ void AudioEngine::audio_callback(void *userdata, Uint8 *stream, int len) {
         double sixteenth = beats * 4.0;
         int int_sixteenth = static_cast<int>(sixteenth);
         double step_fraction = sixteenth - static_cast<double>(int_sixteenth);
-        int bass_index = (int_sixteenth / 2) % static_cast<int>(kBassLine.size());
-        int lead_index = int_sixteenth % static_cast<int>(kLeadLine.size());
-        int chord_index = static_cast<int>(beats) % static_cast<int>(kChordRoots.size());
+        int melody_note = note_at_step(kMelody, int_sixteenth, kMelodyPeriod);
+        int bass_note = note_at_step(kBassSequence, int_sixteenth, kBassPeriod);
+        int pad_root = note_at_step(kPadSequence, int_sixteenth, kPadPeriod);
 
-        double bass_freq = midi_to_freq(kBassLine[static_cast<std::size_t>(bass_index)]);
+        double bass_freq = midi_to_freq(bass_note);
         self->bass_phase_ = wrap_phase(self->bass_phase_ + bass_freq / sample_rate);
         double bass = triangle_wave(self->bass_phase_) * 0.35 * softstep(step_fraction, 2.6);
 
-        double lead_freq = midi_to_freq(kLeadLine[static_cast<std::size_t>(lead_index)]);
+        double lead_freq = midi_to_freq(melody_note);
         self->shimmer_phase_ = wrap_phase(self->shimmer_phase_ + lead_freq / sample_rate);
         double lead = std::sin(2.0 * std::numbers::pi_v<double> * self->shimmer_phase_);
         lead *= 0.22 * (0.35 + softstep(step_fraction, 3.4));
 
-        int arp_index = (int_sixteenth / 4) % static_cast<int>(kChordRoots.size());
-        double arp_freq = midi_to_freq(kChordRoots[static_cast<std::size_t>(arp_index)] + 12 + (int_sixteenth % 4) * 2);
+        double arp_freq = midi_to_freq(pad_root + 12 + (int_sixteenth % 4) * 2);
         self->lead_phase_ = wrap_phase(self->lead_phase_ + arp_freq / sample_rate);
         double arp = saw_wave(self->lead_phase_) * 0.12;
 
-        double pad_freq = midi_to_freq(kChordRoots[static_cast<std::size_t>(chord_index)]);
+        double pad_freq = midi_to_freq(pad_root);
         self->pad_phase_ = wrap_phase(self->pad_phase_ + pad_freq / sample_rate * 0.25);
         double pad = 0.0;
         for (int interval : kChordIntervals) {
-            double freq = midi_to_freq(kChordRoots[static_cast<std::size_t>(chord_index)] + interval);
+            double freq = midi_to_freq(pad_root + interval);
             double phase = wrap_phase(self->pad_phase_ * freq / pad_freq);
             pad += saw_wave(phase);
         }
